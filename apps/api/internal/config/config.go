@@ -32,6 +32,7 @@ type Config struct {
 	R2SecretAccessKey string
 
 	CLIOAuthPort string
+	WebOrigin    string
 }
 
 func Load() (*Config, error) {
@@ -57,6 +58,7 @@ func Load() (*Config, error) {
 		R2AccessKeyID:      strings.TrimSpace(os.Getenv("R2_ACCESS_KEY_ID")),
 		R2SecretAccessKey:  strings.TrimSpace(os.Getenv("R2_SECRET_ACCESS_KEY")),
 		CLIOAuthPort:       getOrDefault("CLI_OAUTH_PORT", "9876"),
+		WebOrigin:          getOrDefault("WEB_ORIGIN", "http://localhost:3000"),
 	}
 
 	jwtHours, err := intFromEnv("JWT_EXPIRY_HOURS", 720)

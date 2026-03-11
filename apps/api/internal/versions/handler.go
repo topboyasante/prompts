@@ -95,6 +95,78 @@ func (h *Handler) Upload(c *gin.Context) {
 	server.RespondJSON(c, http.StatusCreated, created)
 }
 
+var nameSlugRE = regexp.MustCompile(`^[a-z0-9-]+$`)
+
+type publishRequest struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Tags        []string `json:"tags"`
+	Content     string   `json:"content"`
+}
+
+func (h *Handler) Publish(c *gin.Context) {
+	userID, ok := auth.UserIDFromGin(c)
+	if !ok {
+		server.LoggerFromContext(c).Warn("missing authenticated user in publish")
+		server.RespondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "missing user in context")
+		return
+	}
+
+	var req publishRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		server.LoggerFromContext(c).WithError(err).Warn("invalid publish payload")
+		server.RespondValidationError(c, map[string]string{"body": "invalid JSON payload"})
+		return
+	}
+	req.Name = strings.TrimSpace(req.Name)
+	if !nameSlugRE.MatchString(req.Name) {
+		server.RespondValidationError(c, map[string]string{"name": "must match ^[a-z0-9-]+$"})
+		return
+	}
+	req.Content = strings.TrimSpace(req.Content)
+	if req.Content == "" {
+		server.RespondValidationError(c, map[string]string{"content": "content is required"})
+		return
+	}
+
+	pr, err := h.prompts.Create(c.Request.Context(), &prompts.Prompt{
+		Name:        req.Name,
+		Description: strings.TrimSpace(req.Description),
+		OwnerID:     userID,
+	}, req.Tags)
+	if err != nil {
+		server.LoggerFromContext(c).WithError(err).WithField("name", req.Name).Warn("prompt create conflict in publish")
+		server.RespondError(c, http.StatusConflict, "CONFLICT", "prompt already exists")
+		return
+	}
+
+	const version = "1.0.0"
+	reader, size, err := CreateTarballFromContent(req.Name, req.Description, version, req.Tags, req.Content)
+	if err != nil {
+		server.LoggerFromContext(c).WithError(err).Error("failed to create tarball in publish")
+		server.RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to build tarball")
+		return
+	}
+	defer reader.Close()
+
+	key := path.Join(pr.OwnerID, pr.Name, version+".tar.gz")
+	if err := h.storage.Upload(c.Request.Context(), key, reader, size, "application/gzip"); err != nil {
+		server.LoggerFromContext(c).WithError(err).WithFields(logrus.Fields{"prompt_id": pr.ID, "s3_key": key}).Error("tarball upload failed in publish")
+		server.RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to upload tarball")
+		return
+	}
+
+	created, err := h.repo.Create(c.Request.Context(), &PromptVersion{PromptID: pr.ID, Version: version, TarballURL: key})
+	if err != nil {
+		server.LoggerFromContext(c).WithError(err).WithField("prompt_id", pr.ID).Error("failed to persist version in publish")
+		server.RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to persist version")
+		return
+	}
+	server.LoggerFromContext(c).WithFields(logrus.Fields{"prompt_id": pr.ID, "version_id": created.ID}).Info("prompt published")
+
+	server.RespondJSON(c, http.StatusCreated, created)
+}
+
 func (h *Handler) List(c *gin.Context) {
 	owner := strings.TrimSpace(c.Param("owner"))
 	name := strings.TrimSpace(c.Param("name"))

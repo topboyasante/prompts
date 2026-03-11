@@ -10,10 +10,12 @@ import (
 type Repository interface {
 	Create(ctx context.Context, p *Prompt, tags []string) (*Prompt, error)
 	FindByOwnerAndName(ctx context.Context, ownerUsername, name string) (*Prompt, error)
+	List(ctx context.Context, limit, offset int) ([]Prompt, error)
 	Search(ctx context.Context, query string, limit, offset int) ([]Prompt, error)
 	FindByOwnerUsername(ctx context.Context, ownerUsername string) ([]Prompt, error)
 	FindByID(ctx context.Context, id string) (*Prompt, error)
 	GetTags(ctx context.Context, promptID string) ([]string, error)
+	Delete(ctx context.Context, id string) error
 }
 
 type GORMRepository struct {
@@ -64,6 +66,21 @@ func (r *GORMRepository) FindByOwnerAndName(ctx context.Context, ownerUsername, 
 	return &prompt, nil
 }
 
+func (r *GORMRepository) List(ctx context.Context, limit, offset int) ([]Prompt, error) {
+	rows := make([]Prompt, 0)
+	err := r.db.WithContext(ctx).
+		Table("prompts p").
+		Select("p.id, p.name, p.description, p.owner_id, p.created_at, u.username as owner_username").
+		Joins("join users u on u.id = p.owner_id").
+		Order("p.created_at DESC").
+		Limit(limit).Offset(offset).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 func (r *GORMRepository) Search(ctx context.Context, query string, limit, offset int) ([]Prompt, error) {
 	rows := make([]Prompt, 0)
 	sql := `
@@ -105,6 +122,10 @@ func (r *GORMRepository) FindByID(ctx context.Context, id string) (*Prompt, erro
 		return nil, err
 	}
 	return &prompt, nil
+}
+
+func (r *GORMRepository) Delete(ctx context.Context, id string) error {
+	return r.db.WithContext(ctx).Where("id = ?", id).Delete(&Prompt{}).Error
 }
 
 func (r *GORMRepository) GetTags(ctx context.Context, promptID string) ([]string, error) {

@@ -42,5 +42,5 @@ func RespondValidationError(c *gin.Context, details map[string]string) {
 }
 
 func RespondJSON(c *gin.Context, status int, v any) {
-	c.JSON(status, v)
+	c.JSON(status, gin.H{"data": v})
 }

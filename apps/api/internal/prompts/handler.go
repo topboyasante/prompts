@@ -84,21 +84,23 @@ func (h *Handler) Get(c *gin.Context) {
 		return
 	}
 
-	server.RespondJSON(c, http.StatusOK, gin.H{"prompt": prompt})
+	server.RespondJSON(c, http.StatusOK, prompt)
 }
 
 func (h *Handler) Search(c *gin.Context) {
 	query := strings.TrimSpace(c.Query("q"))
-	if query == "" {
-		server.LoggerFromContext(c).Warn("search query missing")
-		server.RespondValidationError(c, map[string]string{"q": "query is required"})
-		return
-	}
-
 	limit := parseInt(c.Query("limit"), 20)
 	offset := parseInt(c.Query("offset"), 0)
 
-	rows, err := h.repo.Search(c.Request.Context(), query, limit, offset)
+	var (
+		rows []Prompt
+		err  error
+	)
+	if query == "" {
+		rows, err = h.repo.List(c.Request.Context(), limit, offset)
+	} else {
+		rows, err = h.repo.Search(c.Request.Context(), query, limit, offset)
+	}
 	if err != nil {
 		server.LoggerFromContext(c).WithError(err).WithFields(logrus.Fields{"q": query, "limit": limit, "offset": offset}).Error("prompt search failed")
 		server.RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "search failed")
@@ -112,6 +114,39 @@ func (h *Handler) Search(c *gin.Context) {
 		"limit":  limit,
 		"offset": offset,
 	})
+}
+
+func (h *Handler) Delete(c *gin.Context) {
+	userID, ok := auth.UserIDFromGin(c)
+	if !ok {
+		server.RespondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "missing user in context")
+		return
+	}
+
+	id := c.Param("id")
+	prompt, err := h.repo.FindByID(c.Request.Context(), id)
+	if err != nil {
+		server.LoggerFromContext(c).WithError(err).WithField("prompt_id", id).Error("failed to load prompt")
+		server.RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to load prompt")
+		return
+	}
+	if prompt == nil {
+		server.RespondError(c, http.StatusNotFound, "NOT_FOUND", "prompt not found")
+		return
+	}
+	if prompt.OwnerID != userID {
+		server.RespondError(c, http.StatusForbidden, "FORBIDDEN", "not the prompt owner")
+		return
+	}
+
+	if err := h.repo.Delete(c.Request.Context(), id); err != nil {
+		server.LoggerFromContext(c).WithError(err).WithField("prompt_id", id).Error("failed to delete prompt")
+		server.RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to delete prompt")
+		return
+	}
+	server.LoggerFromContext(c).WithFields(logrus.Fields{"prompt_id": id, "owner_id": userID}).Info("prompt deleted")
+
+	c.Status(http.StatusNoContent)
 }
 
 func parseInt(raw string, fallback int) int {

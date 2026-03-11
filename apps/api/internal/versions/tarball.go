@@ -65,6 +65,57 @@ func CreateTarball(sourceDir string) (io.ReadCloser, int64, error) {
 	return io.NopCloser(bytes.NewReader(data)), int64(len(data)), nil
 }
 
+func CreateTarballFromContent(name, description, version string, tags []string, content string) (io.ReadCloser, int64, error) {
+	yamlLines := []string{
+		"name: " + name,
+		"description: " + description,
+		"version: " + version,
+		"tags:",
+	}
+	for _, t := range tags {
+		yamlLines = append(yamlLines, "  - "+t)
+	}
+	promptYAML := strings.Join(yamlLines, "\n") + "\n"
+	readme := "# " + name + "\n\n" + description + "\n"
+
+	type entry struct {
+		name    string
+		content string
+	}
+	files := []entry{
+		{"prompt.yaml", promptYAML},
+		{"prompt.md", content},
+		{"README.md", readme},
+	}
+
+	var buf bytes.Buffer
+	gw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gw)
+
+	for _, f := range files {
+		data := []byte(f.content)
+		hdr := &tar.Header{
+			Name: f.name,
+			Mode: 0o644,
+			Size: int64(len(data)),
+		}
+		if err := tw.WriteHeader(hdr); err != nil {
+			return nil, 0, err
+		}
+		if _, err := tw.Write(data); err != nil {
+			return nil, 0, err
+		}
+	}
+	if err := tw.Close(); err != nil {
+		return nil, 0, err
+	}
+	if err := gw.Close(); err != nil {
+		return nil, 0, err
+	}
+	data := buf.Bytes()
+	return io.NopCloser(bytes.NewReader(data)), int64(len(data)), nil
+}
+
 func ExtractTarball(r io.Reader, destDir string) error {
 	gr, err := gzip.NewReader(r)
 	if err != nil {

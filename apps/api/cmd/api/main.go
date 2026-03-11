@@ -51,16 +51,19 @@ func main() {
 	promptsHandler := prompts.NewHandler(promptsRepo)
 	versionsHandler := versions.NewHandler(versionsRepo, promptsRepo, storageClient)
 
-	r := server.New()
+	r := server.New(cfg.WebOrigin)
 	v1 := r.Group("/v1")
 	{
 		v1.GET("/auth/:provider/login", authHandler.Login)
 		v1.GET("/auth/:provider/callback", authHandler.Callback)
+		v1.POST("/auth/logout", authHandler.Logout)
 
 		authorized := v1.Group("/")
 		authorized.Use(authMiddleware.Authenticate())
 		{
+			authorized.GET("/me", authHandler.Me)
 			authorized.POST("/prompts", promptsHandler.Create)
+			authorized.DELETE("/prompts/:id", promptsHandler.Delete)
 			authorized.POST("/prompts/:id/versions", versionsHandler.Upload)
 		}
 

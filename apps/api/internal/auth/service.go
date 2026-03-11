@@ -131,6 +131,10 @@ func (s *AuthService) IssueJWT(user *users.User) (string, error) {
 	return SignToken(user.ID, s.jwtSecret, s.jwtExpiry)
 }
 
+func (s *AuthService) GetUserByID(ctx context.Context, id string) (*users.User, error) {
+	return s.usersRepo.FindByID(ctx, id)
+}
+
 func (s *AuthService) getProvider(provider string) (Provider, error) {
 	p, ok := s.providers[strings.ToLower(strings.TrimSpace(provider))]
 	if !ok {

@@ -22,14 +22,20 @@ func NewMiddleware(jwtSecret string) *Middleware {
 
 func (m *Middleware) Authenticate() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		var rawToken string
 		header := strings.TrimSpace(c.GetHeader("Authorization"))
-		if !strings.HasPrefix(header, "Bearer ") {
-			server.RespondError(c, 401, "UNAUTHORIZED", "missing bearer token")
-			c.Abort()
-			return
+		if strings.HasPrefix(header, "Bearer ") {
+			rawToken = strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
+		} else {
+			cookie, err := c.Cookie("prompts_token")
+			if err != nil || strings.TrimSpace(cookie) == "" {
+				server.RespondError(c, 401, "UNAUTHORIZED", "missing bearer token")
+				c.Abort()
+				return
+			}
+			rawToken = strings.TrimSpace(cookie)
 		}
 
-		rawToken := strings.TrimSpace(strings.TrimPrefix(header, "Bearer "))
 		claims, err := ParseToken(rawToken, m.jwtSecret)
 		if err != nil {
 			server.RespondError(c, 401, "UNAUTHORIZED", "invalid access token")

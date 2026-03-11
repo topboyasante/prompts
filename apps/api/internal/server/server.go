@@ -13,7 +13,7 @@ import (
 const requestIDKey = "request_id"
 const loggerKey = "logger"
 
-func New() *gin.Engine {
+func New(webOrigin string) *gin.Engine {
 	r := gin.New()
 	r.MaxMultipartMemory = 10 << 20
 
@@ -24,7 +24,7 @@ func New() *gin.Engine {
 	r.Use(requestIDMiddleware())
 	r.Use(recoveryMiddleware())
 	r.Use(loggerMiddleware(logger))
-	r.Use(corsMiddleware())
+	r.Use(corsMiddleware(webOrigin))
 
 	return r
 }
@@ -96,11 +96,13 @@ func loggerMiddleware(logger *logrus.Logger) gin.HandlerFunc {
 	}
 }
 
-func corsMiddleware() gin.HandlerFunc {
+func corsMiddleware(allowedOrigin string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+		c.Writer.Header().Set("Vary", "Origin")
 		if c.Request.Method == http.MethodOptions {
 			c.Status(http.StatusNoContent)
 			return

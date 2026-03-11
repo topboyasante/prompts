@@ -8,7 +8,8 @@ type Prompt struct {
 	Description   string    `gorm:"column:description" json:"description"`
 	OwnerID       string    `gorm:"column:owner_id" json:"owner_id"`
 	CreatedAt     time.Time `gorm:"column:created_at" json:"created_at"`
-	OwnerUsername string    `gorm:"-" json:"owner_username,omitempty"`
+	OwnerUsername string    `gorm:"column:owner_username;<-:false" json:"owner_username,omitempty"`
+	DownloadCount int       `gorm:"column:download_count;<-:false" json:"download_count"`
 	Tags          []string  `gorm:"-" json:"tags,omitempty"`
 }
 

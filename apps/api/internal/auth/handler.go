@@ -28,6 +28,26 @@ func NewHandler(service *AuthService, cfg *config.Config) *Handler {
 	return &Handler{service: service, config: cfg}
 }
 
+func (h *Handler) Me(c *gin.Context) {
+	userID, ok := UserIDFromGin(c)
+	if !ok {
+		server.RespondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "not authenticated")
+		return
+	}
+	user, err := h.service.GetUserByID(c.Request.Context(), userID)
+	if err != nil || user == nil {
+		server.LoggerFromContext(c).WithError(err).WithField("user_id", userID).Error("failed to load user")
+		server.RespondError(c, http.StatusNotFound, "NOT_FOUND", "user not found")
+		return
+	}
+	server.RespondJSON(c, http.StatusOK, user)
+}
+
+func (h *Handler) Logout(c *gin.Context) {
+	c.SetCookie("prompts_token", "", -1, "/", "", false, true)
+	c.Status(http.StatusNoContent)
+}
+
 func (h *Handler) Login(c *gin.Context) {
 	provider := strings.ToLower(strings.TrimSpace(c.Param("provider")))
 	if !h.service.IsProviderSupported(provider) {
@@ -133,7 +153,7 @@ func (h *Handler) Callback(c *gin.Context) {
 
 	c.SetCookie("prompts_token", jwtToken, h.config.JWTExpiryHours*3600, "/", "", false, true)
 	server.LoggerFromContext(c).WithFields(logrus.Fields{"provider": provider, "user_id": user.ID, "cli": false}).Info("oauth callback success")
-	server.RespondJSON(c, http.StatusOK, gin.H{"token": jwtToken})
+	c.Redirect(http.StatusFound, h.config.WebOrigin+"/")
 }
 
 func randomState(size int) (string, error) {
